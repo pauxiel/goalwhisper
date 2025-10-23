@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Goal Whisper - Analysis Monitor</title>
+    <meta http-equiv="refresh" content="10">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status { padding: 5px 10px; border-radius: 15px; color: white; font-size: 12px; }
+        .processing { background: #ff9500; }
+        .analyzing { background: #007aff; }
+        .completed { background: #34c759; }
+        .failed { background: #ff3b30; }
+        h1 { color: #333; }
+        .refresh { color: #666; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚽ Goal Whisper - Analysis Monitor</h1>
+        <p class="refresh">🔄 Auto-refreshing every 10 seconds</p>
+        
+        <div class="card">
+            <h3>📊 Quick Commands for Terminal Monitoring:</h3>
+            <pre style="background: #f0f0f0; padding: 10px; border-radius: 5px;">
+# Monitor video processing logs
+aws logs tail /aws/lambda/goalwhisper-paulobayuwana-VideoProcessorFunction-bbctssrb --follow
+
+# Check analysis status
+aws dynamodb scan --table-name goalwhisper-paulobayuwana-AnalysisResultsTable-snuvnvcs
+
+# Monitor S3 uploads
+aws s3 ls s3://goalwhisper-paulobayuwana-videobucketbucket-xwsahdsn --recursive
+
+# Check API logs
+aws logs tail /aws/lambda/goalwhisper-paulobayuwana-AnalysisProcessorFunction-kavmtdre --follow
+            </pre>
+        </div>
+
+        <div class="card">
+            <h3>🔗 System URLs:</h3>
+            <ul>
+                <li><strong>Frontend:</strong> <a href="https://d2ue3a72jplrda.cloudfront.net" target="_blank">https://d2ue3a72jplrda.cloudfront.net</a></li>
+                <li><strong>API:</strong> <a href="https://w6s82gweg5.execute-api.us-east-1.amazonaws.com" target="_blank">Analysis API</a></li>
+                <li><strong>CloudWatch:</strong> <a href="https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups" target="_blank">AWS CloudWatch Logs</a></li>
+                <li><strong>DynamoDB:</strong> <a href="https://console.aws.amazon.com/dynamodbv2/home?region=us-east-1#table?name=goalwhisper-paulobayuwana-AnalysisResultsTable-snuvnvcs" target="_blank">Analysis Results Table</a></li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>⏱️ Expected Analysis Times:</h3>
+            <ul>
+                <li><strong>30 seconds video:</strong> 3-8 minutes total</li>
+                <li><strong>2 minutes video:</strong> 5-12 minutes total</li>
+                <li><strong>5 minutes video:</strong> 8-20 minutes total</li>
+                <li><strong>10+ minutes video:</strong> 15+ minutes total</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>🎯 Analysis Progress Stages:</h3>
+            <ol>
+                <li><span class="status processing">processing</span> Video uploaded, starting analysis</li>
+                <li><span class="status analyzing">analyzing</span> AWS Rekognition processing video</li>
+                <li><span class="status completed">completed</span> Analysis finished, results available</li>
+                <li><span class="status failed">failed</span> Error occurred during processing</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>
