@@ -4,15 +4,16 @@ import { useState } from "react";
 
 interface FormProps {
   url: string;
+  videoId: string;
 }
 
-export default function Form({ url }: FormProps) {
+export default function Form({ url, videoId }: FormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [uploadMethod, setUploadMethod] = useState<"file" | "url">("file");
   const [uploading, setUploading] = useState(false);
   const [uploadComplete, setUploadComplete] = useState(false);
-  const [videoId, setVideoId] = useState<string>("");
+  const [currentVideoId, setCurrentVideoId] = useState<string>("");
   const [analysisStatus, setAnalysisStatus] = useState<string>("");
   const [analysisResults, setAnalysisResults] = useState<any>(null);
   const [polling, setPolling] = useState(false);
@@ -87,14 +88,10 @@ export default function Form({ url }: FormProps) {
     setUploading(true);
     try {
       let fileToUpload = file;
-      let generatedVideoId = "";
 
       if (uploadMethod === "url") {
         // Download video from URL
         fileToUpload = await downloadVideoFromUrl(videoUrl);
-        generatedVideoId = videoUrl.split('/').pop()?.split('?')[0]?.replace(/\.[^/.]+$/, "")?.replace(/[^a-zA-Z0-9]/g, '-') || 'video-from-url';
-      } else {
-        generatedVideoId = file!.name.replace('.mp4', '').replace(/[^a-zA-Z0-9]/g, '-');
       }
 
       const response = await fetch(url, {
@@ -107,12 +104,12 @@ export default function Form({ url }: FormProps) {
 
       if (response.ok) {
         setUploadComplete(true);
-        setVideoId(generatedVideoId);
+        setCurrentVideoId(videoId); // Use the actual S3 key as video ID
         setAnalysisStatus("processing");
         console.log("Video uploaded successfully!");
         
-        // Start polling for analysis results
-        startPollingForAnalysis(generatedVideoId);
+        // Start polling for analysis results using the S3 key
+        startPollingForAnalysis(videoId);
       } else {
         console.error("Upload failed:", response.statusText);
       }
