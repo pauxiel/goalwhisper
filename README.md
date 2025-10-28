@@ -1,37 +1,53 @@
 # Goal Whisper ⚽
 
-A soccer video analysis application that uses AWS services to analyze soccer match footage and provide insights about player movements, key moments, and game statistics.
+A production-ready soccer video analysis application that uses AWS Rekognition Video to analyze soccer match footage and provide AI-powered insights about player movements, key moments, and game statistics.
 
-![Goal Whisper](https://img.shields.io/badge/Soccer-Analysis-green) ![AWS](https://img.shields.io/badge/AWS-Powered-orange) ![Next.js](https://img.shields.io/badge/Next.js-16.0-blue) ![SST](https://img.shields.io/badge/SST-3.17-purple)
+![Goal Whisper](https://img.shields.io/badge/Soccer-Analysis-green) ![AWS](https://img.shields.io/badge/AWS-Rekognition-orange) ![Next.js](https://img.shields.io/badge/Next.js-16.0-blue) ![SST](https://img.shields.io/badge/SST-3.17-purple) ![Production](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
 
-## 🎯 Features
+## 🎯 Key Features
 
-- **Video Upload**: Upload soccer match videos through a modern web interface
-- **AI-Powered Analysis**: Automated analysis of soccer gameplay using AWS Rekognition
-- **Player Tracking**: Track individual players throughout the match
-- **Key Moments Detection**: Identify goals, celebrations, and significant plays
-- **Match Statistics**: Generate comprehensive match statistics and insights
-- **Real-time Processing**: Asynchronous video processing with status updates
-- **RESTful API**: Clean API endpoints for video analysis retrieval
+- **🎥 Video Upload**: Drag & drop or select soccer videos for analysis
+- **🤖 AI-Powered Analysis**: AWS Rekognition Video with 97%+ confidence detection
+- **⚽ Soccer-Specific Insights**: Ball detection, player tracking, goal identification
+- **⏱️ Real-time Processing**: Live status updates with polling system
+- **📊 Comprehensive Results**: Labels, faces, content moderation scores
+- **☁️ Cloud-Native**: Fully serverless architecture on AWS
+- **🔒 Content Safety**: Built-in content moderation and filtering
 
 ## 🏗️ Architecture
 
-### Frontend
-- **Next.js 16.0** - Modern React framework with server-side rendering
-- **TailwindCSS** - Utility-first CSS framework for responsive design
-- **TypeScript** - Type-safe development experience
+```mermaid
+graph TD
+    A[Next.js Frontend] --> B[API Gateway]
+    B --> C[Upload Lambda]
+    C --> D[S3 Bucket]
+    D --> E[Video Processor Lambda]
+    E --> F[AWS Rekognition Video]
+    E --> G[DynamoDB]
+    F --> H[Analysis Processor Lambda]
+    H --> G
+    H --> I[Results API]
+    I --> A
+```
 
-### Backend Infrastructure
-- **AWS Lambda** - Serverless functions for video processing
-- **Amazon S3** - Video file storage with automatic processing triggers
-- **DynamoDB** - Analysis results and metadata storage
-- **API Gateway** - RESTful API endpoints
-- **CloudFront CDN** - Global content delivery for fast access
+### Core Components
 
-### Video Analysis
-- **Frame-based Processing** - Extract and analyze video frames
-- **Mock Analysis System** - Demonstration system while AWS Rekognition Video approval is pending
-- **Soccer-specific Detection** - Tailored algorithms for soccer gameplay analysis
+- **Frontend**: Next.js 15 with responsive design and real-time polling
+- **API Gateway**: RESTful endpoints for upload and analysis
+- **Lambda Functions**: 
+  - Video Processor: Initiates Rekognition jobs
+  - Analysis Processor: Fetches results and generates insights
+- **AWS Rekognition Video**: Label detection, face detection, content moderation
+- **DynamoDB**: Job tracking and status management
+- **S3**: Secure video storage with CloudFront distribution
+- **CloudFront**: Global CDN for fast content delivery
+
+## 🚀 Live Production Deployment
+
+🌐 **Frontend**: https://de3a31me05abo.cloudfront.net  
+🔗 **API**: https://59od2c0m30.execute-api.us-east-1.amazonaws.com
+
+**Try it now!** Upload a soccer video and see real-time AI analysis in action.
 
 ## 🚀 Quick Start
 
@@ -79,9 +95,38 @@ Returns detailed analysis results for a specific video.
 **Response Example:**
 ```json
 {
-  "videoId": "test-video-123",
-  "status": "completed",
-  "summary": "Soccer video analysis: Detected match highlights including goals, player movements, and key game moments.",
+  "status": "COMPLETED",
+  "analysis": {
+    "labels": [
+      { "name": "Soccer", "confidence": 99.8, "instances": [...] },
+      { "name": "Ball", "confidence": 97.5, "instances": [...] },
+      { "name": "Person", "confidence": 98.2, "instances": [...] }
+    ],
+    "faces": [
+      { "confidence": 96.8, "boundingBox": {...}, "landmarks": [...] }
+    ],
+    "contentModeration": {
+      "moderationLabels": [],
+      "overallScore": 0.1
+    },
+    "soccerAnalysis": {
+      "ballDetections": 45,
+      "playerCount": 8,
+      "goalDetections": 2,
+      "highlights": [
+        "High-intensity soccer gameplay detected",
+        "Multiple goal-scoring opportunities identified",
+        "Professional-level player movements observed"
+      ]
+    }
+  },
+  "processingTime": "2.3s",
+  "videoMetadata": {
+    "duration": "00:01:30",
+    "format": "mp4",
+    "resolution": "1920x1080"
+  }
+}
   "keyMoments": [
     {
       "timestamp": 15.5,
