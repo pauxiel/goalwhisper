@@ -104,14 +104,15 @@ export default function Form({ url, videoId }: FormProps) {
 
       if (response.ok) {
         setUploadComplete(true);
-        setCurrentVideoId(videoId); // Use the actual S3 key as video ID
+        setCurrentVideoId(videoId);
         setAnalysisStatus("processing");
         console.log("Video uploaded successfully!");
         
-        // Start polling for analysis results using the S3 key
+        // Start polling for analysis results
         startPollingForAnalysis(videoId);
       } else {
-        console.error("Upload failed:", response.statusText);
+        console.error("Upload failed:", response.status, response.statusText);
+        alert(`Upload failed: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -125,7 +126,7 @@ export default function Form({ url, videoId }: FormProps) {
     setPolling(true);
     const pollInterval = setInterval(async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://w6s82gweg5.execute-api.us-east-1.amazonaws.com";
         const response = await fetch(`${apiUrl}/analysis/${videoId}`);
         const data = await response.json();
 

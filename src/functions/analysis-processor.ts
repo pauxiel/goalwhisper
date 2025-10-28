@@ -2,7 +2,6 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { 
   RekognitionClient,
   GetLabelDetectionCommand,
-  GetPersonTrackingCommand,
   GetFaceDetectionCommand,
   GetContentModerationCommand
 } from "@aws-sdk/client-rekognition";
@@ -48,43 +47,100 @@ const SOCCER_ACTIVITIES = [
 ];
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  console.log("Analysis processor invoked with event:", JSON.stringify(event, null, 2));
+  
   const videoId = event.pathParameters?.videoId;
   
   if (!videoId) {
+    console.error("No videoId provided in path parameters");
     return {
       statusCode: 400,
       body: JSON.stringify({ error: "Video ID is required" })
     };
   }
 
+  console.log("Processing analysis for videoId:", videoId);
+
   try {
     // Get the analysis record from DynamoDB
+    console.log("Fetching item from DynamoDB table:", process.env.ANALYSIS_TABLE_NAME);
     const getResponse = await dynamodb.send(new GetItemCommand({
       TableName: process.env.ANALYSIS_TABLE_NAME,
       Key: { videoId: { S: videoId } }
     }));
 
     if (!getResponse.Item) {
+      console.error("No item found for videoId:", videoId);
       return {
         statusCode: 404,
         body: JSON.stringify({ error: "Video analysis not found" })
       };
     }
 
+    console.log("Found DynamoDB item:", JSON.stringify(getResponse.Item, null, 2));
+
     const item = getResponse.Item;
     const status = item.status?.S;
 
+    console.log("Current status:", status);
+
     if (status === "processing" || status === "analyzing") {
+      console.log("Status is processing/analyzing, checking if jobs are complete...");
+      
+      // If status is "analyzing", try to fetch results
+      const jobIds = {
+        labelJobId: item.labelJobId?.S,
+        faceJobId: item.faceJobId?.S,
+        contentJobId: item.contentJobId?.S
+      };
+
+      console.log("Job IDs to check:", jobIds);
+
+      // Check if all jobs are complete and fetch results
+      const analysisResults = await fetchAndAnalyzeResults(jobIds);
+      
+      if (analysisResults) {
+        console.log("Analysis results available, generating soccer analysis...");
+        // Generate soccer-specific analysis
+        const soccerAnalysis = await generateSoccerAnalysis(analysisResults);
+        
+        console.log("Soccer analysis generated, updating DynamoDB...");
+        // Store results in DynamoDB
+        await dynamodb.send(new UpdateItemCommand({
+          TableName: process.env.ANALYSIS_TABLE_NAME,
+          Key: { videoId: { S: videoId } },
+          UpdateExpression: "SET #status = :status, analysisResults = :results, completedAt = :completedAt",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: {
+            ":status": { S: "completed" },
+            ":results": { S: JSON.stringify(soccerAnalysis) },
+            ":completedAt": { S: new Date().toISOString() }
+          }
+        }));
+
+        console.log("Analysis completed and stored");
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "completed",
+            analysisResults: soccerAnalysis
+          })
+        };
+      }
+
+      console.log("Analysis still in progress");
       return {
         statusCode: 202,
         body: JSON.stringify({ 
-          status,
+          status: "analyzing",
           message: "Analysis still in progress"
         })
       };
     }
 
     if (status === "failed") {
+      console.log("Analysis failed");
       return {
         statusCode: 500,
         body: JSON.stringify({ 
@@ -95,48 +151,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     if (status === "completed" && item.analysisResults?.S) {
+      console.log("Analysis already completed, returning cached results");
+      const analysisResults = JSON.parse(item.analysisResults.S);
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: item.analysisResults.S
+        body: JSON.stringify({
+          status: "completed",
+          analysisResults: analysisResults
+        })
       };
     }
 
-    // If status is "analyzing", try to fetch results
-    const jobIds = {
-      labelJobId: item.labelJobId?.S,
-      personJobId: item.personJobId?.S,
-      faceJobId: item.faceJobId?.S,
-      contentJobId: item.contentJobId?.S
-    };
-
-    // Check if all jobs are complete and fetch results
-    const analysisResults = await fetchAndAnalyzeResults(jobIds);
-    
-    if (analysisResults) {
-      // Generate soccer-specific analysis
-      const soccerAnalysis = await generateSoccerAnalysis(analysisResults);
-      
-      // Store results in DynamoDB
-      await dynamodb.send(new UpdateItemCommand({
-        TableName: process.env.ANALYSIS_TABLE_NAME,
-        Key: { videoId: { S: videoId } },
-        UpdateExpression: "SET #status = :status, analysisResults = :results, completedAt = :completedAt",
-        ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: {
-          ":status": { S: "completed" },
-          ":results": { S: JSON.stringify(soccerAnalysis) },
-          ":completedAt": { S: new Date().toISOString() }
-        }
-      }));
-
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(soccerAnalysis)
-      };
-    }
-
+    console.log("Unexpected status or missing results:", status);
     return {
       statusCode: 202,
       body: JSON.stringify({ 
@@ -160,54 +187,96 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 async function fetchAndAnalyzeResults(jobIds: Record<string, string | undefined>) {
   try {
     const results: any = {};
+    let anyJobInProgress = false;
+    let anyJobFailed = false;
+
+    console.log("Fetching results for job IDs:", jobIds);
 
     // Fetch label detection results
     if (jobIds.labelJobId) {
       try {
+        console.log("Checking label detection job:", jobIds.labelJobId);
         const labelResponse = await rekognition.send(new GetLabelDetectionCommand({
           JobId: jobIds.labelJobId
         }));
+        console.log("Label detection status:", labelResponse.JobStatus);
+        
         if (labelResponse.JobStatus === "SUCCEEDED") {
           results.labels = labelResponse.Labels;
+          console.log("Labels found:", labelResponse.Labels?.length || 0);
         } else if (labelResponse.JobStatus === "IN_PROGRESS") {
-          return null; // Still processing
+          anyJobInProgress = true;
+        } else if (labelResponse.JobStatus === "FAILED") {
+          anyJobFailed = true;
+          console.error("Label detection job failed:", labelResponse.StatusMessage);
         }
       } catch (error) {
         console.error("Error fetching label results:", error);
-      }
-    }
-
-    // Fetch person tracking results
-    if (jobIds.personJobId) {
-      try {
-        const personResponse = await rekognition.send(new GetPersonTrackingCommand({
-          JobId: jobIds.personJobId
-        }));
-        if (personResponse.JobStatus === "SUCCEEDED") {
-          results.persons = personResponse.Persons;
-        } else if (personResponse.JobStatus === "IN_PROGRESS") {
-          return null; // Still processing
-        }
-      } catch (error) {
-        console.error("Error fetching person results:", error);
+        anyJobFailed = true;
       }
     }
 
     // Fetch face detection results
     if (jobIds.faceJobId) {
       try {
+        console.log("Checking face detection job:", jobIds.faceJobId);
         const faceResponse = await rekognition.send(new GetFaceDetectionCommand({
           JobId: jobIds.faceJobId
         }));
+        console.log("Face detection status:", faceResponse.JobStatus);
+        
         if (faceResponse.JobStatus === "SUCCEEDED") {
           results.faces = faceResponse.Faces;
+          console.log("Faces found:", faceResponse.Faces?.length || 0);
         } else if (faceResponse.JobStatus === "IN_PROGRESS") {
-          return null; // Still processing
+          anyJobInProgress = true;
+        } else if (faceResponse.JobStatus === "FAILED") {
+          anyJobFailed = true;
+          console.error("Face detection job failed:", faceResponse.StatusMessage);
         }
       } catch (error) {
         console.error("Error fetching face results:", error);
+        anyJobFailed = true;
       }
     }
+
+    // Fetch content moderation results
+    if (jobIds.contentJobId) {
+      try {
+        console.log("Checking content moderation job:", jobIds.contentJobId);
+        const contentResponse = await rekognition.send(new GetContentModerationCommand({
+          JobId: jobIds.contentJobId
+        }));
+        console.log("Content moderation status:", contentResponse.JobStatus);
+        
+        if (contentResponse.JobStatus === "SUCCEEDED") {
+          results.contentModeration = contentResponse.ModerationLabels;
+          console.log("Content moderation labels found:", contentResponse.ModerationLabels?.length || 0);
+        } else if (contentResponse.JobStatus === "IN_PROGRESS") {
+          anyJobInProgress = true;
+        } else if (contentResponse.JobStatus === "FAILED") {
+          anyJobFailed = true;
+          console.error("Content moderation job failed:", contentResponse.StatusMessage);
+        }
+      } catch (error) {
+        console.error("Error fetching content moderation results:", error);
+        anyJobFailed = true;
+      }
+    }
+
+    // Return null if any job is still in progress
+    if (anyJobInProgress) {
+      console.log("Some jobs still in progress");
+      return null;
+    }
+
+    // Proceed with partial results even if some jobs failed
+    console.log("Analysis results summary:", {
+      hasLabels: !!results.labels,
+      hasFaces: !!results.faces,
+      hasContentModeration: !!results.contentModeration,
+      anyJobFailed
+    });
 
     return results;
   } catch (error) {
@@ -279,29 +348,11 @@ async function generateSoccerAnalysis(results: any): Promise<SoccerAnalysis> {
     });
   }
 
-  // Analyze person tracking for players
-  if (results.persons) {
-    const playerMap = new Map();
-    results.persons.forEach((person: any) => {
-      const trackId = person.Person?.Index;
-      if (trackId !== undefined) {
-        if (!playerMap.has(trackId)) {
-          playerMap.set(trackId, {
-            trackId,
-            appearances: 0,
-            timeline: []
-          });
-        }
-        playerMap.get(trackId).appearances++;
-        playerMap.get(trackId).timeline.push({
-          start: person.Timestamp / 1000,
-          end: person.Timestamp / 1000 + 1 // Approximate end time
-        });
-      }
-    });
+  // Analyze person tracking for players (removed due to API deprecation)
+  // Note: Person tracking APIs have been deprecated by AWS
+  // Alternative solutions could include using face detection or custom models
 
-    analysis.players = Array.from(playerMap.values());
-  }
+  analysis.players = []; // Empty since person tracking is no longer available
 
   // Generate key moments based on high-confidence detections
   const allDetections = [
@@ -330,15 +381,15 @@ async function generateSoccerAnalysis(results: any): Promise<SoccerAnalysis> {
 
   // Generate summary
   const totalScenes = analysis.scenes.length;
-  const totalPlayers = analysis.players.length;
   const topActivities = analysis.activities
     .sort((a, b) => b.instances.length - a.instances.length)
     .slice(0, 3)
     .map(a => a.label);
 
-  analysis.summary = `Soccer video analysis: Detected ${totalScenes} scenes with ${totalPlayers} tracked players. ` +
+  analysis.summary = `Soccer video analysis: Detected ${totalScenes} scenes. ` +
     `Key activities include: ${topActivities.join(', ')}. ` +
-    `Found ${analysis.keyMoments.length} significant moments with high confidence.`;
+    `Found ${analysis.keyMoments.length} significant moments with high confidence. ` +
+    `Note: Player tracking unavailable due to AWS API deprecation.`;
 
   return analysis;
 }

@@ -15,6 +15,56 @@ export default $config({
       access: "public"
     });
 
+    // SNS topic for Rekognition Video notifications
+    const videoNotificationsTopic = new sst.aws.SnsTopic("VideoNotifications");
+
+    // IAM role for Rekognition Video service to access S3 and SNS
+    const rekognitionServiceRole = new aws.iam.Role("RekognitionVideoRole", {
+      assumeRolePolicy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: {
+              Service: "rekognition.amazonaws.com"
+            },
+            Action: "sts:AssumeRole"
+          }
+        ]
+      })
+    });
+
+    // Attach managed policy for Rekognition Video
+    new aws.iam.RolePolicyAttachment("RekognitionVideoS3Policy", {
+      role: rekognitionServiceRole.name,
+      policyArn: "arn:aws:iam::aws:policy/service-role/AmazonRekognitionServiceRole"
+    });
+
+    // Add additional permissions for S3 and SNS with wildcard resources for now
+    new aws.iam.RolePolicy("RekognitionVideoCustomPolicy", {
+      role: rekognitionServiceRole.name,
+      policy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Action: [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            Resource: "*"
+          },
+          {
+            Effect: "Allow",
+            Action: [
+              "sns:Publish"
+            ],
+            Resource: "*"
+          }
+        ]
+      })
+    });
+
     // DynamoDB table to store analysis results
     const analysisTable = new sst.aws.Dynamo("AnalysisResults", {
       fields: {
@@ -40,9 +90,11 @@ export default $config({
         {
           actions: [
             "rekognition:StartLabelDetection",
+            "rekognition:StartPersonTracking", 
             "rekognition:StartFaceDetection",
             "rekognition:StartContentModeration",
             "rekognition:GetLabelDetection",
+            "rekognition:GetPersonTracking",
             "rekognition:GetFaceDetection",
             "rekognition:GetContentModeration"
           ],
@@ -75,6 +127,7 @@ export default $config({
         {
           actions: [
             "rekognition:GetLabelDetection",
+            "rekognition:GetPersonTracking",
             "rekognition:GetFaceDetection",
             "rekognition:GetContentModeration"
           ],
@@ -83,26 +136,20 @@ export default $config({
       ]
     });
 
+    });
+
     // API Gateway for analysis results
     const api = new sst.aws.ApiGatewayV2("VideoAnalysisApi");
 
     // API routes
     api.route("GET /analysis/{videoId}", {
-      handler: "src/functions/analysis-processor.handler",
+      handler: "src/functions/get-analysis.handler",
       environment: {
         ANALYSIS_TABLE_NAME: analysisTable.name
       },
       permissions: [
         {
-          actions: ["dynamodb:GetItem", "dynamodb:UpdateItem"],
-          resources: ["*"]
-        },
-        {
-          actions: [
-            "rekognition:GetLabelDetection",
-            "rekognition:GetFaceDetection",
-            "rekognition:GetContentModeration"
-          ],
+          actions: ["dynamodb:GetItem", "dynamodb:Query"],
           resources: ["*"]
         }
       ]
@@ -124,9 +171,9 @@ export default $config({
     // S3 bucket notification for video uploads
     bucket.subscribe(videoProcessor.arn, {
       events: ["s3:ObjectCreated:*"]
+      // Removed filterSuffix to trigger on all uploads
     });
 
-    // Next.js frontend
     const frontend = new sst.aws.Nextjs("Frontend", { 
       link: [bucket, analysisTable, api],
       environment: {

@@ -25,10 +25,6 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Bucket"
     }
-    "VideoNotifications": {
-      "arn": string
-      "type": "sst.aws.SnsTopic"
-    }
     "VideoProcessor": {
       "name": string
       "type": "sst.aws.Function"
